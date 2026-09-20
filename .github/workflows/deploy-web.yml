@@ -23,19 +23,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Web export templates
+      - name: Setup Godot export templates
         run: |
-          dest="$HOME/.local/share/godot/export_templates/4.4.1.stable"
-          mkdir -p "$dest"
-          curl -L --fail --retry 3 -o /tmp/godot-templates.tpz https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz
-          mkdir -p /tmp/godot-templates
-          python3 - <<'PY'
-          import zipfile
-          with zipfile.ZipFile('/tmp/godot-templates.tpz') as archive:
-              archive.extractall('/tmp/godot-templates')
-          PY
-          cp -r /tmp/godot-templates/templates/. "$dest/"
-          test -f "$dest/web_nothreads_release.zip"
+          mkdir -p "$HOME/.local/share/godot/export_templates"
+          mkdir -p "$HOME/.config"
+          mv /root/.config/godot "$HOME/.config/godot"
+          mv /root/.local/share/godot/export_templates/4.4.1.stable "$HOME/.local/share/godot/export_templates/4.4.1.stable"
+          test -f "$HOME/.local/share/godot/export_templates/4.4.1.stable/web_nothreads_release.zip"
 
       - name: Import project
         run: godot --headless --path . --editor --import
