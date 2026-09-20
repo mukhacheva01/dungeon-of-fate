@@ -25,12 +25,13 @@ jobs:
 
       - name: Install Web export templates
         run: |
-          mkdir -p /root/.local/share/godot/export_templates/4.4.1.stable
+          dest="$HOME/.local/share/godot/export_templates/4.4.1.stable"
+          mkdir -p "$dest"
           curl -L --fail --retry 3 -o /tmp/godot-templates.tpz https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz
           mkdir -p /tmp/godot-templates
           unzip -q /tmp/godot-templates.tpz -d /tmp/godot-templates
-          cp -r /tmp/godot-templates/templates/. /root/.local/share/godot/export_templates/4.4.1.stable/
-          test -f /root/.local/share/godot/export_templates/4.4.1.stable/web_nothreads_release.zip
+          cp -r /tmp/godot-templates/templates/. "$dest/"
+          test -f "$dest/web_nothreads_release.zip"
 
       - name: Import project
         run: godot --headless --path . --editor --import
