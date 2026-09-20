@@ -17,15 +17,11 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.4.1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install Godot 4.7.2 and Web templates
-        uses: firebelley/setup-godot@v2
-        with:
-          version: 4.7.2
-          include-templates: true
 
       - name: Import project
         run: godot --headless --path . --editor --import
