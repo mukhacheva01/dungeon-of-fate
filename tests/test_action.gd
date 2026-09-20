@@ -14,7 +14,24 @@ func run() -> void:
 	battle.set_physics_process(false)
 	await process_frame
 	battle.start_run()
-	check(battle.started and battle.hp == 100 and battle.living_enemies() == 3, "Initial state")
+	check(battle.started and battle.hp == 100 and battle.max_hp == 100 and battle.living_enemies() == 3, "Initial state")
+	battle.boosts.clear(); battle.boosts.append("vitality")
+	battle.level = 2
+	battle.begin_level()
+	check(battle.max_hp == 120 and battle.hp == 120, "Vitality increases current and max HP")
+	battle.boosts.clear(); battle.boosts.append("blade")
+	battle.enemies.clear()
+	battle.enemies.append(battle.make_enemy(Vector2(560, 510), "test", 100, 0, "guard"))
+	battle.player = Vector2(560, 565); battle.facing = Vector2.UP; battle.slash_cd = 0
+	battle.attack()
+	check(battle.enemies[0].hp <= 70, "Blade boost increases damage")
+	battle.boosts.clear(); battle.boosts.append("dash"); battle.dash_cd = 0; battle.step(0.01, Vector2.ZERO, false, true); check(battle.dash_cd < 1.0, "Dash boost reduces cooldown")
+	battle.restart(); battle.start_run(); battle.boosts.append("armor"); battle.invulnerable = 0; battle.damage_player(14); check(battle.hp == 90, "Armor boost reduces incoming damage")
+	battle.boosts.clear(); battle.boosts.append("flame"); battle.enemies.clear(); battle.enemies.append(battle.make_enemy(Vector2(560, 510), "test", 100, 0, "guard")); battle.player = Vector2(560, 565); battle.facing = Vector2.UP; battle.slash_cd = 0; battle.attack(); check(battle.enemies[0].hp <= 70, "Flame boost increases hit damage")
+	battle.boosts.clear(); battle.boosts.append("frost"); battle.restart(); battle.start_run(); battle.enemies[0].pos = Vector2(100, 300); battle.player = Vector2(900, 500); var before_frost: Vector2 = battle.enemies[0].pos; battle.step(0.1, Vector2.ZERO); var frost_distance: float = battle.enemies[0].pos.distance_to(before_frost); check(frost_distance < 8, "Frost boost slows enemies")
+	battle.restart(); battle.start_run(); battle.boosts.append("haste"); var before_haste: Vector2 = battle.player; battle.step(0.1, Vector2.RIGHT); check(battle.player.x - before_haste.x > 22, "Haste boost increases movement")
+	check(battle.boost_title("vitality").contains("+20 HP"), "Every boost has a readable title")
+	battle.restart(); battle.start_run()
 	for enemy in battle.enemies:
 		check(enemy.pos.y >= 245 and enemy.pos.y <= 610, "Enemy spawn stays inside arena")
 		check(enemy.has("kind") and enemy.kind in ["guard", "sentinel", "archer", "mage", "golem", "shade"], "Enemy has a pixel-art kind")

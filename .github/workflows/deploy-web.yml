@@ -17,16 +17,32 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: barichello/godot-ci:4.7.2
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Export Web
+
+      - name: Install Godot 4.7.2 and Web templates
+        uses: firebelley/setup-godot@v2
+        with:
+          version: 4.7.2
+          include-templates: true
+
+      - name: Import project
+        run: godot --headless --path . --editor --import
+
+      - name: Run combat regression tests
+        run: godot --headless --path . --script tests/test_combat.gd
+
+      - name: Run real-time regression tests
+        run: godot --headless --path . --script tests/test_action.gd --quit-after 300
+
+      - name: Export Web build
         run: |
           mkdir -p build
-          godot --headless --path . --editor --import
           godot --headless --path . --export-release Web build/index.html
+          test -s build/index.html
+          ls -lh build
+
       - name: Upload Web artifact
         uses: actions/upload-pages-artifact@v3
         with:

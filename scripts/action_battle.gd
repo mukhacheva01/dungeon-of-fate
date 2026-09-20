@@ -12,6 +12,7 @@ const MUTED := Color("a6adc4")
 var player := Vector2(560, 565)
 var facing := Vector2.UP
 var hp := 100
+var max_hp := 100
 var enemies: Array[Dictionary] = []
 var walls: Array[Rect2] = [Rect2(236, 310, 64, 64), Rect2(820, 310, 64, 64), Rect2(382, 478, 44, 48), Rect2(696, 478, 44, 48)]
 var slash_left := 0.0
@@ -83,7 +84,9 @@ func restart() -> void:
 func begin_level() -> void:
 	player = Vector2(560, 565)
 	facing = Vector2.UP
-	hp = clampi(hp if level > 1 else 100, 1, max_hp_value())
+	var previous_max_hp := max_hp
+	max_hp = max_hp_value()
+	hp = max_hp if level == 1 else clampi(hp + (max_hp - previous_max_hp), 1, max_hp)
 	enemies.clear()
 	traps.clear()
 	var scale := 1.0 + (level - 1) * 0.14
@@ -110,7 +113,8 @@ func begin_level() -> void:
 	invulnerable = 0
 	hurt_left = 0
 	if level == 1:
-		hp = max_hp_value()
+		max_hp = max_hp_value()
+		hp = max_hp
 	elapsed = 0 if level == 1 else elapsed
 	strikes = 0 if level == 1 else strikes
 	finished = false
@@ -258,6 +262,10 @@ func configure_input() -> void:
 				InputMap.action_add_event(action, event)
 
 func _physics_process(delta: float) -> void:
+	if not started:
+		time += delta
+		queue_redraw()
+		return
 	var movement := Vector2.ZERO
 	movement.x = float(Input.is_action_pressed("dawn_right") or held("right")) - float(Input.is_action_pressed("dawn_left") or held("left"))
 	movement.y = float(Input.is_action_pressed("dawn_down") or held("down")) - float(Input.is_action_pressed("dawn_up") or held("up"))
@@ -472,10 +480,11 @@ func update_enemy(enemy: Dictionary, delta: float) -> void:
 func damage_player(amount: int) -> void:
 	if invulnerable > 0 or finished:
 		return
-	hp = maxi(0, hp - amount)
+	var final_amount: int = maxi(1, amount - (4 if "armor" in boosts else 0))
+	hp = maxi(0, hp - final_amount)
 	invulnerable = 0.65
 	hurt_left = 0.20
-	floaters.append({"pos":player + Vector2(-8, -55), "text":"−%d" % amount, "life":0.65, "color":Color("ee9b8b")})
+	floaters.append({"pos":player + Vector2(-8, -55), "text":"−%d" % final_amount, "life":0.65, "color":Color("ee9b8b")})
 	if hp <= 0:
 		finished = true
 		won = false
@@ -501,8 +510,8 @@ func _draw() -> void:
 	text_at("%02d / %s" % [level, "СЕРДЦЕ ДРАКОНА" if dragon else "ДВОР БАШНИ ПЕПЛА"], Vector2(48, 108), 17, Color("eaa46b") if dragon else MUTED)
 	text_at("РЫЦАРЬ", Vector2(390, 58), 13, MUTED)
 	rect(390, 71, 228, 10, Color("34394f"))
-	rect(390, 71, 228 * hp / 100.0, 10, GOLD if hp > 30 else Color("dc8578"))
-	text_at("%d / 100 HP" % hp, Vector2(633, 82), 17)
+	rect(390, 71, 228.0 * hp / max_hp, 10, GOLD if hp > max_hp * 0.3 else Color("dc8578"))
+	text_at("%d / %d HP" % [hp, max_hp], Vector2(633, 82), 17)
 	var total_enemies := enemies.size()
 	var defeated_enemies := total_enemies - living_enemies()
 	var goal := "Победи дракона в трёх фазах" if dragon else ("Одолей стражей и войди в башню" if living_enemies() > 0 else "Путь открыт! Подойди к золотым воротам ↑")
@@ -542,7 +551,8 @@ func _draw() -> void:
 	text_at("Враг замахнулся? Выйди из красного сектора.", Vector2(48, 805), 15, MUTED)
 	text_at("Рывок готов" if dash_cd <= 0 else "Рывок: %.1f с" % dash_cd, Vector2(884, 789), 14, GOLD if dash_cd <= 0 else MUTED)
 	if not started:
-		rect(176, 218, 768, 370, Color("171d31"))
+		draw_preview_scene()
+		rect(176, 218, 768, 370, Color("171d31", 0.93))
 		draw_rect(Rect2(176, 218, 768, 370), GOLD, false, 2)
 		text_at("TOWERS OF DAWN", Vector2(318, 294), 38, GOLD)
 		text_at("БАШНИ ЗАРИ", Vector2(402, 331), 24, PAPER)
@@ -567,6 +577,25 @@ func _draw() -> void:
 			message = "Победа за %d с. Ударов: %d. R: ещё один бой." % [int(elapsed), strikes] if won else "Не стой перед замахом. R: попробовать снова."
 		text_at(message, Vector2(278, 415), 18)
 		text_at("Бой в реальном времени, без очереди ходов.", Vector2(278, 455), 16, MUTED)
+
+func draw_preview_scene() -> void:
+	# A living poster: the cast breathes and the dragon wings loop behind the title.
+	var hero_pos := Vector2(330 + sin(time * 1.4) * 8, 470 + sin(time * 3.0) * 3)
+	var foe_positions := [Vector2(240, 350), Vector2(860, 355), Vector2(260, 505)]
+	var foe_kinds := ["guard", "archer", "mage"]
+	for i in range(foe_positions.size()):
+		var foe := make_enemy(foe_positions[i], kind_name(foe_kinds[i]), 1, 0, foe_kinds[i])
+		foe.moving = true
+		foe.face = (hero_pos - foe_positions[i]).normalized()
+		draw_enemy_sprite(foe)
+	var boss := make_enemy(Vector2(820 + sin(time * 1.1) * 12, 290), "Дракон Зари", 1, 0, "dragon")
+	boss.face = Vector2.LEFT
+	draw_enemy_sprite(boss)
+	draw_knight(hero_pos, Vector2.RIGHT, false, true, false, sin(time * 4.0) > 0.4)
+	for i in range(8):
+		var ember := Vector2(740 + sin(time * 2.0 + i) * 42, 230 + fmod(time * 35.0 + i * 26.0, 150.0))
+		draw_circle(ember, 2 + (i % 2), Color("f0b36f", 0.75))
+	text_at("THE DAWNBOUND", Vector2(712, 400), 12, Color("f0b36f", 0.8))
 
 func draw_world() -> void:
 	rect(40, 162, 1040, 492, Color("50536c"))
