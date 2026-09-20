@@ -29,7 +29,11 @@ jobs:
           mkdir -p "$dest"
           curl -L --fail --retry 3 -o /tmp/godot-templates.tpz https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz
           mkdir -p /tmp/godot-templates
-          unzip -q /tmp/godot-templates.tpz -d /tmp/godot-templates
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('/tmp/godot-templates.tpz') as archive:
+              archive.extractall('/tmp/godot-templates')
+          PY
           cp -r /tmp/godot-templates/templates/. "$dest/"
           test -f "$dest/web_nothreads_release.zip"
 
