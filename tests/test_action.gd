@@ -15,6 +15,21 @@ func run() -> void:
 	await process_frame
 	battle.start_run()
 	check(battle.started and battle.hp == 100 and battle.max_hp == 100 and battle.living_enemies() == 3, "Initial state")
+	battle.started = false
+	battle.choose_class("spellcaster")
+	check(battle.class_id == "spellcaster" and battle.max_hp == 82 and battle.hp == 82, "Spellcaster class HP")
+	battle.start_run()
+	battle.damage_player(20)
+	var damaged_hp: int = battle.hp
+	battle.healing_pickups.clear(); battle.healing_pickups.append({"pos": battle.player, "active": true, "pulse": 0})
+	battle.check_healing_pickups()
+	check(battle.hp == damaged_hp + 5 and battle.hp <= battle.max_hp, "Healing pickup restores exactly five")
+	battle.invulnerable = 0
+	battle.damage_player(1000)
+	check(battle.hp == 0 and battle.finished and battle.hp <= battle.max_hp, "HP floor and defeat")
+	battle.started = false
+	battle.choose_class("knight")
+	battle.restart(); battle.start_run()
 	battle.boosts.clear(); battle.boosts.append("vitality")
 	battle.level = 2
 	battle.begin_level()
@@ -37,7 +52,16 @@ func run() -> void:
 		check(enemy.has("kind") and enemy.kind in ["guard", "sentinel", "archer", "mage", "golem", "shade"], "Enemy has a pixel-art kind")
 	battle.level = 10
 	battle.begin_level()
-	check(battle.enemies[0].kind == "dragon", "Dragon has dedicated sprite set")
+	check(battle.enemies[0].kind == "dragon" and battle.enemies[0].max_hp > 700, "Dragon has dedicated sprite set and high HP")
+	battle.enemies[0].hp = battle.enemies[0].max_hp
+	battle.update_enemy(battle.enemies[0], 0.01)
+	check(battle.enemies[0].phase == 1, "Dragon phase one")
+	battle.enemies[0].hp = roundi(battle.enemies[0].max_hp * 0.5)
+	battle.update_enemy(battle.enemies[0], 0.01)
+	check(battle.enemies[0].phase == 2, "Dragon phase two")
+	battle.enemies[0].hp = roundi(battle.enemies[0].max_hp * 0.2)
+	battle.update_enemy(battle.enemies[0], 0.01)
+	check(battle.enemies[0].phase == 3, "Dragon phase three")
 	battle.enemies.clear()
 	var start: Vector2 = battle.player
 	battle.step(0.1, Vector2.RIGHT)

@@ -11,6 +11,7 @@ const PAPER := Color("eee3cb")
 const MUTED := Color("a6adc4")
 var player := Vector2(560, 565)
 var facing := Vector2.UP
+var class_id := "knight"
 var hp := 100
 var max_hp := 100
 var enemies: Array[Dictionary] = []
@@ -41,6 +42,8 @@ var boosts: Array[String] = []
 var boost_choices: Array[String] = []
 var choosing_boost := false
 var traps: Array[Dictionary] = []
+var healing_pickups: Array[Dictionary] = []
+var heal_message_left := 0.0
 var trap_message := ""
 var trap_message_left := 0.0
 var dragon := false
@@ -89,6 +92,7 @@ func begin_level() -> void:
 	hp = max_hp if level == 1 else clampi(hp + (max_hp - previous_max_hp), 1, max_hp)
 	enemies.clear()
 	traps.clear()
+	healing_pickups.clear()
 	var scale := 1.0 + (level - 1) * 0.14
 	dragon = level == max_level
 	if dragon:
@@ -106,6 +110,9 @@ func begin_level() -> void:
 	for i in range(mini(1 + int((level - 1) / 2), 5)):
 		var trap_positions := [Vector2(320, 255), Vector2(800, 255), Vector2(320, 535), Vector2(800, 535), Vector2(560, 430)]
 		traps.append({"pos": trap_positions[(i + level) % trap_positions.size()], "kind": ["fire", "ice", "spike"][i % 3], "armed": true, "flash": 0.0})
+	var heal_positions := [Vector2(170, 430), Vector2(930, 430), Vector2(560, 260)]
+	for i in range(1 + int(level / 4)):
+		healing_pickups.append({"pos": heal_positions[(i + level) % heal_positions.size()], "active": true, "pulse": i})
 	slash_left = 0
 	slash_cd = 0
 	dash_left = 0
@@ -147,8 +154,23 @@ func kind_name(kind: String) -> String:
 func make_enemy(pos: Vector2, title: String, health: int, speed: float, kind: String = "guard") -> Dictionary:
 	return {"pos": pos, "name": title, "kind": kind, "hp": health, "max_hp": health, "speed": speed, "face": Vector2.DOWN, "state": "chase", "timer": 0.0, "flash": 0.0, "moving": false, "phase": 1}
 
+func get_class_name() -> String:
+	return {"knight":"Рыцарь", "spellcaster":"Заклинатель", "hunter":"Охотник"}.get(class_id, "Рыцарь")
+
+func choose_class(next_class: String) -> void:
+	if next_class in ["knight", "spellcaster", "hunter"] and not started:
+		class_id = next_class
+		max_hp = max_hp_value()
+		hp = max_hp
+		queue_redraw()
+
 func max_hp_value() -> int:
-	return 100 + (20 if "vitality" in boosts else 0)
+	var base := 100
+	if class_id == "spellcaster":
+		base = 82
+	elif class_id == "hunter":
+		base = 92
+	return base + (20 if "vitality" in boosts else 0)
 
 func create_buttons() -> void:
 	for key in ["left", "up", "down", "right", "attack", "dash", "boost1", "boost2", "boost3", "pause", "restart", "start"]:
@@ -237,6 +259,10 @@ func _input(event: InputEvent) -> void:
 			if not found:
 				touch_fingers.erase(event.index)
 	elif event is InputEventKey and event.pressed and not event.echo:
+		if not started:
+			if event.physical_keycode == KEY_1: choose_class("knight")
+			elif event.physical_keycode == KEY_2: choose_class("spellcaster")
+			elif event.physical_keycode == KEY_3: choose_class("hunter")
 		if event.physical_keycode == KEY_ESCAPE:
 			toggle_pause()
 		elif event.physical_keycode == KEY_R:
@@ -307,6 +333,7 @@ func step(delta: float, direction: Vector2, attacking: bool = false, dashing: bo
 		if finished:
 			break
 	check_traps()
+	check_healing_pickups()
 	if not finished and living_enemies() == 0 and player.distance_to(PORTAL) < 46:
 		if level >= max_level:
 			finished = true
@@ -371,6 +398,17 @@ func check_traps() -> void:
 		trap_message_left = 2.0
 		floaters.append({"pos": trap.pos + Vector2(-58, -28), "text": "ЛОВУШКА", "life": 0.9, "color": Color("ee9b8b")})
 
+func check_healing_pickups() -> void:
+	if hp >= max_hp:
+		return
+	for pickup in healing_pickups:
+		if pickup.active and player.distance_to(pickup.pos) <= 25:
+			var old_hp := hp
+			hp = mini(max_hp, hp + 5)
+			pickup.active = false
+			heal_message_left = 1.2
+			floaters.append({"pos": pickup.pos + Vector2(-24, -28), "text": "+%d HP" % (hp - old_hp), "life": 0.9, "color": Color("8bd1ca")})
+
 func valid_position(point: Vector2, radius: float) -> bool:
 	if not FIELD.grow(-radius).has_point(point):
 		return false
@@ -404,14 +442,18 @@ func attack() -> bool:
 		if enemy.hp <= 0:
 			continue
 		var offset: Vector2 = enemy.pos - player
-		if offset.length() <= REACH and (offset.length() < 1 or facing.dot(offset.normalized()) > 0.15) and clear_line(player, enemy.pos):
-			var hit_damage := 22 + (8 if "blade" in boosts else 0) + (8 if "flame" in boosts else 0)
+		var attack_range: float = 87.0 if class_id == "knight" else (260.0 if class_id == "spellcaster" else 210.0)
+		var cone_ok: bool = offset.length() < 1 or facing.dot(offset.normalized()) > (-0.2 if class_id != "knight" else 0.15)
+		if offset.length() <= attack_range and cone_ok and clear_line(player, enemy.pos):
+			var hit_damage: int = (22 if class_id == "knight" else (30 if class_id == "spellcaster" else 18)) + (8 if "blade" in boosts else 0) + (8 if "flame" in boosts else 0)
 			var critical := rng.randf() < 0.15
 			if critical:
 				hit_damage = roundi(hit_damage * 1.75)
 				criticals += 1
 				last_hit_was_critical = true
 			enemy.hp = maxi(0, enemy.hp - hit_damage)
+			if class_id == "hunter" and enemy.hp > 0:
+				enemy.hp = maxi(0, enemy.hp - 9)
 			enemy.flash = 0.22
 			enemy.pos = move_body(enemy.pos, offset.normalized() * 14, 16)
 			floaters.append({"pos": enemy.pos + Vector2(-8, -52), "text": ("КРИТ! %d" % hit_damage) if critical else str(hit_damage), "life": 0.9 if critical else 0.65, "color": Color("f5c66e") if critical else GOLD})
@@ -440,7 +482,16 @@ func update_enemy(enemy: Dictionary, delta: float) -> void:
 	if enemy.state == "windup":
 		if enemy.timer <= 0:
 			if offset.length() < 76 and (offset.length() < 1 or enemy.face.dot(offset.normalized()) > 0.25) and clear_line(enemy.pos, player):
-				damage_player(maxi(3, 14 + (4 if dragon and enemy.phase >= 2 else 0) + (6 if dragon and enemy.phase >= 3 else 0) - (4 if "armor" in boosts else 0)))
+				var dragon_crit: bool = dragon and rng.randf() < (0.12 + 0.08 * enemy.phase)
+				var base_damage: int = 14 + (4 if dragon and enemy.phase >= 2 else 0) + (6 if dragon and enemy.phase >= 3 else 0)
+				if dragon_crit:
+					base_damage = roundi(base_damage * 1.6)
+					floaters.append({"pos": player + Vector2(-30, -70), "text": "ДРАКОН КРИТ!", "life": 0.9, "color": Color("f08f72")})
+				damage_player(base_damage)
+				if dragon and enemy.phase >= 2:
+					for pickup in healing_pickups:
+						if pickup.active and pickup.pos.distance_to(player) < 150:
+							pickup.active = false
 			enemy.state = "recover"
 			enemy.timer = 0.7
 		return
@@ -508,7 +559,7 @@ func _draw() -> void:
 	text_at("TOWERS OF DAWN  /  ПРОТОТИП 0.2", Vector2(48, 32), 13, GOLD)
 	text_at("Башни Зари", Vector2(48, 77), 36)
 	text_at("%02d / %s" % [level, "СЕРДЦЕ ДРАКОНА" if dragon else "ДВОР БАШНИ ПЕПЛА"], Vector2(48, 108), 17, Color("eaa46b") if dragon else MUTED)
-	text_at("РЫЦАРЬ", Vector2(390, 58), 13, MUTED)
+	text_at(get_class_name().to_upper(), Vector2(390, 58), 13, GOLD if class_id != "knight" else MUTED)
 	rect(390, 71, 228, 10, Color("34394f"))
 	rect(390, 71, 228.0 * hp / max_hp, 10, GOLD if hp > max_hp * 0.3 else Color("dc8578"))
 	text_at("%d / %d HP" % [hp, max_hp], Vector2(633, 82), 17)
@@ -557,6 +608,7 @@ func _draw() -> void:
 		text_at("TOWERS OF DAWN", Vector2(318, 294), 38, GOLD)
 		text_at("БАШНИ ЗАРИ", Vector2(402, 331), 24, PAPER)
 		text_at("Двор Пепла  ·  уровень 01", Vector2(420, 377), 17, MUTED)
+		text_at("Класс: %s   [1] Рыцарь  [2] Заклинатель  [3] Охотник" % get_class_name(), Vector2(300, 405), 15, GOLD)
 		text_at("Беги. Уклоняйся. Руби. Зажги все 10 башен.", Vector2(294, 431), 19, PAPER)
 		text_at("После каждой башни выбери один из трёх бустов.", Vector2(313, 462), 16, MUTED)
 		text_at("WASD / стрелки   движение     Space   удар     Shift   рывок", Vector2(263, 514), 14, Color("8792aa"))
@@ -630,6 +682,14 @@ func draw_world() -> void:
 		draw_rect(wall, Color("444c66"))
 		draw_rect(Rect2(wall.position, Vector2(wall.size.x, 9)), Color("69718a"))
 		draw_line(wall.position + Vector2(0, 27), wall.position + Vector2(wall.size.x, 27), Color("252a3d"), 3)
+	for pickup in healing_pickups:
+		if pickup.active:
+			var heal_pos: Vector2 = pickup.pos
+			var heal_pulse := 1.0 + sin(time * 5.0 + pickup.pulse) * 0.12
+			draw_circle(heal_pos, 24 * heal_pulse, Color("8bd1ca", 0.12))
+			draw_arc(heal_pos, 20 * heal_pulse, 0, TAU, 16, Color("8bd1ca"), 2)
+			draw_colored_polygon(PackedVector2Array([heal_pos + Vector2(0, -14), heal_pos + Vector2(9, 0), heal_pos + Vector2(0, 14), heal_pos + Vector2(-9, 0)]), Color("8bd1ca"))
+			text_at("+5 HP", heal_pos + Vector2(-18, 40), 12, Color("8bd1ca"))
 	for trap in traps:
 		var tp: Vector2 = trap.pos
 		var trap_color := Color("dc8578") if trap.kind == "fire" else (Color("81b4c4") if trap.kind == "ice" else Color("c4a06b"))
