@@ -18,10 +18,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: barichello/godot-ci:4.3.0
+      image: barichello/godot-ci:4.4.1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install Web export templates
+        run: |
+          mkdir -p /root/.local/share/godot/export_templates/4.4.1.stable
+          curl -L --fail --retry 3 -o /tmp/godot-templates.tpz https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_export_templates.tpz
+          mkdir -p /tmp/godot-templates
+          tar -xzf /tmp/godot-templates.tpz -C /tmp/godot-templates
+          cp -r /tmp/godot-templates/templates/. /root/.local/share/godot/export_templates/4.4.1.stable/
+          test -f /root/.local/share/godot/export_templates/4.4.1.stable/web_nothreads_release.zip
 
       - name: Import project
         run: godot --headless --path . --editor --import
